@@ -1,0 +1,28 @@
+name: Stock News Digest
+
+on:
+  schedule:
+    - cron: '0 0 * * *'       # 8am MYT daily (all days)
+    - cron: '0 12 * * 1-5'    # 8pm MYT weekdays only (Mon–Fri)
+  workflow_dispatch:  # Allow manual trigger from GitHub UI
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run digest
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TELEGRAM_SESSION: ${{ secrets.TELEGRAM_SESSION_GHA }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+        run: python read_stocks.py
