@@ -50,11 +50,11 @@ def web_search(query: str, max_results: int = 6) -> str:
 
 
 def get_time_window():
-    """Default window for manual runs: since midnight MYT today."""
+    """Always look back 24 hours."""
     myt = timezone(timedelta(hours=8))
     now = datetime.now(myt)
-    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    label = f"{start.strftime('%Y-%m-%d')} (from midnight MYT)"
+    start = now - timedelta(hours=24)
+    label = f"Last 24h ({start.strftime('%Y-%m-%d %H:%M')} - {now.strftime('%H:%M')} MYT)"
     return start.astimezone(timezone.utc), label
 
 
@@ -94,28 +94,9 @@ async def main():
                     print("Stock digest already sent in last 10 minutes. Skipping.")
                     return
 
-        # Adaptive time window: use last STOCK DIGEST as the start
+        # Fixed 24-hour lookback
         now_utc = datetime.now(timezone.utc)
-        last_digest_time = None
-        async for msg in tg.iter_messages("me", limit=50):
-            if msg.date and msg.text and "STOCK DIGEST" in msg.text:
-                last_digest_time = msg.date
-                break
-
-        is_manual = os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
-
-        if is_manual or not last_digest_time:
-            # Manual trigger or first-ever run: since midnight MYT today
-            start_utc, label = get_time_window()
-        else:
-            # Scheduled: use since last digest to avoid gaps
-            start_utc = last_digest_time
-            myt = timezone(timedelta(hours=8))
-            label = (
-                f"Since last digest "
-                f"({last_digest_time.astimezone(myt).strftime('%Y-%m-%d %H:%M')} - "
-                f"{now_utc.astimezone(myt).strftime('%H:%M')} MYT)"
-            )
+        start_utc, label = get_time_window()
 
         print(f"\n{'='*70}")
         print(f"  STOCK NEWS ANALYSIS  |  Window: {label}")
