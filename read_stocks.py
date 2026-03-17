@@ -122,9 +122,17 @@ async def main():
         print(f"{'='*70}\n")
 
         # Get channels from "Stock News" folder only
-        filters = await tg(GetDialogFiltersRequest())
+        filters_result = await tg(GetDialogFiltersRequest())
+        filter_list = filters_result.filters if hasattr(filters_result, 'filters') else filters_result
+
+        def folder_title(f):
+            t = getattr(f, 'title', None)
+            if t is None:
+                return None
+            return t.text if hasattr(t, 'text') else str(t)
+
         stock_folder = next(
-            (f for f in filters if hasattr(f, 'title') and f.title == "Stock News"), None
+            (f for f in filter_list if folder_title(f) == "Stock News"), None
         )
         if not stock_folder:
             print("ERROR: 'Stock News' folder not found in Telegram.")
