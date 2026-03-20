@@ -10,12 +10,14 @@ from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.tl.types import Channel
 from telethon.tl.functions.messages import GetDialogFiltersRequest
+from telethon.tl.functions.channels import CreateChannelRequest
 from datetime import datetime, timezone, timedelta
 
 TELEGRAM_API_ID = 33919151
 TELEGRAM_API_HASH = "dd0a935bd6545cf56910292ff4445c4e"
 TELEGRAM_SESSION = os.environ.get("TELEGRAM_SESSION", "my_session")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+STOCK_GROUP_NAME = os.environ.get("STOCK_GROUP_NAME", "📈 Stock Digest")
 
 TG_SEMAPHORE = 30
 
@@ -58,6 +60,19 @@ def get_time_window():
     return start.astimezone(timezone.utc), label
 
 
+async def get_or_create_stock_group(tg):
+    dialogs = await tg.get_dialogs()
+    for d in dialogs:
+        if d.name == STOCK_GROUP_NAME and getattr(d.entity, "megagroup", False):
+            return d.entity
+    result = await tg(CreateChannelRequest(
+        title=STOCK_GROUP_NAME,
+        about="Automated stock news digests",
+        megagroup=True,
+    ))
+    return result.chats[0]
+
+
 async def fetch_channel(tg, dialog, start_utc, now_utc, sem):
     async with sem:
         messages = []
@@ -86,10 +101,12 @@ async def main():
         raise Exception("Not authorized.")
 
     try:
+        stock_group = await get_or_create_stock_group(tg)
+
         # Duplicate guard: skip if a STOCK DIGEST was sent within the last 10 minutes
         if not os.environ.get("SKIP_DUPLICATE_CHECK"):
             cutoff = datetime.now(timezone.utc) - timedelta(minutes=10)
-            async for msg in tg.iter_messages("me", limit=3):
+            async for msg in tg.iter_messages(stock_group, limit=3):
                 if msg.date and msg.date >= cutoff and msg.text and "STOCK DIGEST" in msg.text:
                     print("Stock digest already sent in last 10 minutes. Skipping.")
                     return
@@ -254,7 +271,7 @@ RAW MESSAGES:
             for i, chunk in enumerate(chunks):
                 if len(chunks) > 1:
                     chunk = f"[{i+1}/{len(chunks)}]\n\n" + chunk
-                await tg.send_message("me", chunk)
+                await tg.send_message(stock_group, chunk)
                 await asyncio.sleep(0.5)
             print(f"  Sent {len(chunks)} message(s).")
 
