@@ -177,42 +177,36 @@ async def main():
 
         prompt = f"""You are a financial educator explaining stock news to a layman investor. Below are raw messages from {len(all_messages)} Telegram channels in a "Stock News" folder, covering {label}.
 
-For each significant story, use the web_search tool to look up the company or context if you are unsure about the ticker, what the company does, or why the news matters. You do not need to search for every story — only where context would meaningfully improve the explanation.
+For each significant story, use the web_search tool to look up the company or context if you are unsure about the ticker, what the company does, or why the news matters. Only search where context would meaningfully improve the explanation.
+
+IMPORTANT: Keep the entire digest CONCISE — aim for under 3500 characters total (excluding sources). Be dense and informative, not verbose.
 
 Produce a digest in this exact format:
 
-STOCK DIGEST | {label}
+📈 STOCK DIGEST | {label}
 
-SECTION 1 — AI / SEMICONDUCTORS / TECH
-[For each stock/story in this category:]
-  🏢 Company: <name> (<ticker>) — <one-line what they do>
-  📰 News: <what the message says, in plain English>
-  💡 Why it matters: <context + implications for investors>
-  📖 Key terms explained: <any jargon broken down simply>
-  📊 Sentiment: Bullish / Bearish / Neutral — <one-line reason>
+Group stories by sector. For each stock/story, use this COMPACT format:
+<ticker> — <one-line news headline>
+↳ Why it matters: <1-2 sentences, plain English, no jargon without explanation>
+↳ Sentiment: Bullish/Bearish/Neutral
 
-SECTION 2 — ENERGY / COMMODITIES
-[same format]
+Sectors (skip any with no stories): AI/Semis/Tech | Energy/Commodities | Financials | Healthcare | Other/Macro
 
-SECTION 3 — FINANCIALS / BANKS
-[same format]
-
-SECTION 4 — HEALTHCARE / BIOTECH
-[same format]
-
-SECTION 5 — OTHER / MACRO
-[same format]
-
-SUMMARY
-<3-5 sentence overview of the session's key themes across all sectors, written for a layman>
+SUMMARY: 2-3 sentences on key themes across all sectors, written for a layman.
 
 Rules:
-- If a story appears in multiple channels, merge into one entry — do not repeat it
+- Merge duplicate stories across channels into one entry
 - Skip channels with no stock-relevant content
-- AI/Semiconductors/Tech always comes first, regardless of message volume
-- No jargon without explanation — if you use a financial term, define it in plain English
-- Keep each entry focused and readable; avoid walls of text
-- If a section has no relevant stories this window, write "[No significant stories this window]"
+- AI/Semiconductors/Tech always comes first
+- Omit sections with no relevant stories — do not write "[No significant stories]"
+- Maximum 10-12 stock entries total — prioritise the most impactful
+
+After the digest, output this EXACT line on its own:
+---SOURCES---
+
+Then list source references as numbered items. For each stock/claim, cite the Telegram channel name it came from. For web searches, include the URL. Format:
+1. [Ticker or topic] — Channel Name or URL
+2. ...
 
 RAW MESSAGES:
 {raw_dump}"""
@@ -226,7 +220,7 @@ RAW MESSAGES:
             while True:
                 response = ai_client.messages.create(
                     model="claude-opus-4-6",
-                    max_tokens=8000,
+                    max_tokens=4000,
                     thinking={"type": "adaptive"},
                     tools=[SEARCH_TOOL],
                     messages=messages,
@@ -257,8 +251,18 @@ RAW MESSAGES:
 
         if digest_text:
             print("\n  Sending to Telegram...")
+
+            # Split digest from sources
+            if "---SOURCES---" in digest_text:
+                body, sources = digest_text.split("---SOURCES---", 1)
+                body = body.strip()
+                sources = sources.strip()
+            else:
+                body = digest_text
+                sources = ""
+
+            full_text = body
             chunk_size = 4000
-            full_text = digest_text
             chunks = []
             while len(full_text) > chunk_size:
                 split_at = full_text.rfind("\n", 0, chunk_size)
@@ -276,9 +280,16 @@ RAW MESSAGES:
                 if i == 0:
                     first_msg = sent
                 await asyncio.sleep(0.5)
+
+            # Send sources as a separate message
+            if sources:
+                sources_msg = f"🔗 SOURCES\n{'='*40}\n\n{sources}"
+                await asyncio.sleep(0.5)
+                await tg.send_message(stock_group, sources_msg)
+
             if first_msg:
                 await tg.pin_message(stock_group, first_msg.id, notify=False)
-            print(f"  Sent {len(chunks)} message(s).")
+            print(f"  Sent {len(chunks)} digest message(s)" + (" + 1 sources message." if sources else "."))
 
         print(f"\n{'='*70}")
         print("  Done.")
